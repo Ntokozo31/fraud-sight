@@ -9,7 +9,10 @@ import {
   deleteTransaction } from "../controllers/transactionController";
 
 // Import validation middleware
-import { validateTransaction } from "../middlewares/validateTransaction";
+import { 
+  validateTransaction,
+  checkTransactionExists
+ } from "../middlewares/validateTransaction";
 
 // Router instance
 const router = Router();
@@ -24,7 +27,7 @@ router.post('/', validateTransaction, createTransaction);
 router.get('/:id', getTransactionById);
 
 // Router to update transaction by it id
-router.put('/:id', validateTransaction, updateTransaction);
+router.put('/:id', checkTransactionExists, validateTransaction, updateTransaction);
 
 // Router to ddelete transaction by it id
 router.delete('/:id', deleteTransaction)
