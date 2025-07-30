@@ -3,6 +3,13 @@ import express, { Application } from 'express';
 // Import router
 import transactionsRouter from './routes/transactionRoutes';
 
+// Import error handler middleware
+import { errorHandler } from './middlewares/errorHandler';
+
+// Load environment variables from .env file
+import dotenv from 'dotenv';
+dotenv.config();
+
 // Create the Express app instance
 const app: Application = express();
 
@@ -14,7 +21,14 @@ app.use(express.json());
 // Transcation router
 app.use('/api/transactions', transactionsRouter);
 
+// Error handler middleware
+app.use(errorHandler);
+
 // Start the server
-app.listen(PORT, () => {
+if(require.main === module) {
+  app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-});
+  });
+}
+
+export default app;
