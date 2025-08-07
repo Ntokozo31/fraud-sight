@@ -16,6 +16,7 @@ import rateLimit from 'express-rate-limit';
 
 // Import router
 import transactionsRouter from './routes/transactionRoutes';
+import usersRouter from './routes/userRoutes'
 
 // Import swaggerUi
 import swaggerUi from 'swagger-ui-express';
@@ -76,13 +77,17 @@ const limiter = rateLimit({
 // Limit requests 
 app.use(limiter);
 
-// Transaction router
-app.use('/api/transactions', transactionsRouter);
-
 // Health Router
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'ok', timeStamp: new Date().toISOString() })
 });
+
+// Transaction router
+app.use('/api/transactions', transactionsRouter);
+
+// User router
+app.use('/api/users',usersRouter);
+
 // Error handler middleware
 app.use(errorHandler);
 
