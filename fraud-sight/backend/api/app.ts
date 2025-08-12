@@ -1,7 +1,5 @@
 import express, { Application } from 'express';
 
-//import { Request, Response } from 'express';
-
 // Import cors
 import cors from 'cors';
 
@@ -24,8 +22,9 @@ import swaggerUi from 'swagger-ui-express';
 // import swaggerDocument
 import swaggerDocument  from '../../docs/swagger.json';
 
-// Import error handler middleware
+// Import middlewares
 import { errorHandler } from './middlewares/errorHandler';
+import { authMiddleware } from './middlewares/auth';
 
 // Load environment variables from .env file
 import dotenv from 'dotenv';
@@ -62,9 +61,24 @@ app.use((req, res, next) => {
 });
 
 // Cors middleware
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',') 
+  : [''];
+
 app.use(cors({
-  origin: ['', ''],
-  credentials: true
+  origin: (origin, callback) => {
+    // Allow requests with no origin
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS policy violation: Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Rate limiting middleware
