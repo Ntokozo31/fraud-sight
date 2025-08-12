@@ -1,90 +1,298 @@
 import { Request, Response } from 'express';
-
-// Import transaction service
 import * as transactionService from '../services/transactionService';
-
-// Import redis client
+import { CreateTransactionRequest } from '../types/transaction';
 import { redis } from '../../redis/redisClient';
-
-// Import logger utility
 import { log } from '../utils/logger';
 
-// Get all transactions controller function
-export const getAllTransactions = async (req: Request, res: Response) => {
-  const cacheKey = 'transactions: allTransactions';
+
+// Get transactions for the authenticated user
+export const getUserTransactions = async (req: Request, res: Response) => {
   try {
-    const cached = await redis.get(cacheKey);
-    if (cached) {
-      log('Cache hit for transaction');
-      return res.status(200).json(JSON.parse(cached));
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const userId = req.user.id;
+    const cacheKey = `transactions:user:${userId}`;
+
+    try {
+      // Check cache first with error handling
+      const cachedTransactions = await redis.get(cacheKey);
+      if (cachedTransactions) {
+        return res.status(200).json(JSON.parse(cachedTransactions));
+      }
+    } catch (redisError: any) {
+      log(`Redis cache error: ${redisError.message} - proceeding without cache`);
     }
 
-    const transactions = await transactionService.getAllTransactions();
-    log('Cache miss for transactions');
-    await redis.set(cacheKey, JSON.stringify(transactions), { EX: 60 });
-    log('Transactions catched in Redis');
-    res.status(200).json({ message: 'Transactions', transactions })
-  } catch (_error) {
-    log('Error fetching transactions')
-    res.status(500).json({ message: 'Failed to fetch transactions'})
+    // Get user's transactions
+    const transactions = await transactionService.getUserTransactions(userId);
+
+    try {
+      // Cache for 5 minutes with error handling
+      await redis.setEx(cacheKey, 300, JSON.stringify(transactions));
+    } catch (redisError: any) {
+      log(`Redis cache set error: ${redisError.message} - data retrieved successfully anyway`);
+    }
+
+    log(`Retrieved ${transactions.length} transactions for user ${userId}`);
+    res.status(200).json(transactions);
+
+  } catch (error: any) {
+    log(`Error retrieving user transactions: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to retrieve transactions' 
+    });
   }
-}
+};
 
-
-// Create transaction controller function
+// Create a new transaction requires authentication
 export const createTransaction = async (req: Request, res: Response) => {
   try {
-    const { amount, type } = req.body;
-    const transaction = await transactionService.createTransaction({ amount, type })
-    await redis.del('transactions: allTransactions');
-    log('Transaction created: ' + JSON.stringify(transaction));
-    res.status(201).json(transaction)
-  } catch (_error) {
-    res.status(500).json({ message: 'Failed to create transaction' })
-  }
-}
+    const { amount, type }: CreateTransactionRequest = req.body;
+    
+    // Check if user exists
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const userId = req.user.id;
 
-// Get transaction by it own id
+    // Validate input
+    if (!amount || !type) {
+      return res.status(400).json({ 
+        message: 'Amount and type are required' 
+      });
+    }
+
+    if (amount <= 0) {
+      return res.status(400).json({ 
+        message: 'Amount must be greater than 0' 
+      });
+    }
+
+    // Create transaction with user ownership
+    const transaction = await transactionService.createTransaction({
+      amount,
+      type,
+      userId
+    });
+
+    try {
+      // Clear user specific cache
+      await redis.del(`transactions:user:${userId}`);
+      await redis.del('transactions:all');
+    } catch (redisError: any) {
+      log(`Redis cache clear error: ${redisError.message} - transaction created successfully anyway`);
+    }
+
+    log(`Transaction created for user ${userId}: ${JSON.stringify(transaction)}`);
+    res.status(201).json(transaction);
+
+  } catch (error: any) {
+    log(`Error creating transaction: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to create transaction' 
+    });
+  }
+};
+
+// Get all transactions admin only
+export const getAllTransactions = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const cacheKey = 'transactions:all';
+
+    try {
+      // Check cache first
+      const cachedTransactions = await redis.get(cacheKey);
+      if (cachedTransactions) {
+        return res.status(200).json(JSON.parse(cachedTransactions));
+      }
+    } catch (redisError: any) {
+      log(`Redis cache error: ${redisError.message} - proceeding without cache`);
+    }
+
+    // Get all transactions admin only
+    const transactions = await transactionService.getAllTransactions();
+
+    try {
+      // Cache for 2 minutes
+      await redis.setEx(cacheKey, 120, JSON.stringify(transactions));
+    } catch (redisError: any) {
+      log(`Redis cache set error: ${redisError.message} - data retrieved successfully anyway`);
+    }
+
+    log(`Admin ${req.user.id} retrieved all transactions (${transactions.length} total)`);
+    res.status(200).json(transactions);
+
+  } catch (error: any) {
+    log(`Error retrieving all transactions: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to retrieve transactions' 
+    });
+  }
+};
+
+// Get single transaction by ID with ownership check
 export const getTransactionById = async (req: Request, res: Response) => {
   try {
-    const id  = Number(req.params.id);
-    const transaction = await transactionService.getTransactionById(id);
-    await redis.del('transactions: allTransactions');
-    log('Transaction fetched: ' + JSON.stringify(transaction))
-    if (!transaction) {
-      return res.status(404).json({ message: 'No transaction found' });
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
     }
-    res.status(200).json({ message: 'Your transaction', transaction });
-  } catch (_error) {
-    res.status(500).json({ message: 'Failed to fetch transaction' });
+    
+    const transactionId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    if (isNaN(transactionId)) {
+      return res.status(400).json({ 
+        message: 'Invalid transaction ID' 
+      });
+    }
+
+    const transaction = await transactionService.getTransactionById(
+      transactionId, 
+      userId, 
+      userRole
+    );
+
+    if (!transaction) {
+      return res.status(404).json({ 
+        message: 'Transaction not found or access denied' 
+      });
+    }
+
+    log(`User ${userId} accessed transaction ${transactionId}`);
+    res.status(200).json(transaction);
+
+  } catch (error: any) {
+    log(`Error retrieving transaction: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to retrieve transaction' 
+    });
   }
 };
 
-// Update transaction by its ID controller function
+// Update transaction with ownership check
 export const updateTransaction = async (req: Request, res: Response) => {
   try {
-    const id = Number(req.params.id);
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const transactionId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const userRole = req.user.role;
     const { amount, type } = req.body;
 
-    const transaction = await transactionService.updateTransaction(id, { amount, type })
-    await redis.del('transactions: allTransactions')
-    log('Transaction successfully updated')
-    res.status(200).json({ message: 'Successfully updated', transaction })
-    } catch (_error) {
-      res.status(500).json({ message: 'Failed to update transaction'})
+    if (isNaN(transactionId)) {
+      return res.status(400).json({ 
+        message: 'Invalid transaction ID' 
+      });
     }
+
+    // Validate update data
+    const updateData: Partial<{ amount: number; type: string }> = {};
+    if (amount !== undefined) {
+      if (amount <= 0) {
+        return res.status(400).json({ 
+          message: 'Amount must be greater than 0' 
+        });
+      }
+      updateData.amount = amount;
+    }
+    if (type !== undefined) {
+      updateData.type = type;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ 
+        message: 'No valid fields to update' 
+      });
+    }
+
+    const updatedTransaction = await transactionService.updateTransaction(
+      transactionId,
+      userId,
+      userRole,
+      updateData
+    );
+
+    if (!updatedTransaction) {
+      return res.status(404).json({ 
+        message: 'Transaction not found or access denied' 
+      });
+    }
+
+    try {
+      // Clear relevant caches
+      await redis.del(`transactions:user:${userId}`);
+      await redis.del('transactions:all');
+    } catch (redisError: any) {
+      log(`Redis cache clear error: ${redisError.message} - transaction updated successfully anyway`);
+    }
+
+    log(`User ${userId} updated transaction ${transactionId}`);
+    res.status(200).json(updatedTransaction);
+
+  } catch (error: any) {
+    log(`Error updating transaction: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to update transaction' 
+    });
+  }
 };
 
-
-// Delete transaction by it Id controller function
+// Delete transaction with ownership check
 export const deleteTransaction = async (req: Request, res: Response) => {
   try {
-    const id = Number(req.params.id);
-    await transactionService.deleteTransaction(id);
-    await redis.del('transactions: allTransactions');
-    log('Transaction succesfully deleted')
-    res.status(200).json({ message: 'Successfully deleted'})
-  } catch (_error) {
-    res.status(500).json({ message: 'Failed to delete transaction'})
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const transactionId = parseInt(req.params.id);
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    if (isNaN(transactionId)) {
+      return res.status(400).json({ 
+        message: 'Invalid transaction ID' 
+      });
+    }
+
+    const deleted = await transactionService.deleteTransaction(
+      transactionId,
+      userId,
+      userRole
+    );
+
+    if (!deleted) {
+      return res.status(404).json({ 
+        message: 'Transaction not found or access denied' 
+      });
+    }
+
+    try {
+      // Clear relevant caches
+      await redis.del(`transactions:user:${userId}`);
+      await redis.del('transactions:all');
+    } catch (redisError: any) {
+      log(`Redis cache clear error: ${redisError.message} - transaction deleted successfully anyway`);
+    }
+
+    log(`User ${userId} deleted transaction ${transactionId}`);
+    res.status(200).json({ 
+      message: 'Transaction deleted successfully' 
+    });
+
+  } catch (error: any) {
+    log(`Error deleting transaction: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to delete transaction' 
+    });
   }
-}
+};
