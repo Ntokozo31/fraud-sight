@@ -53,3 +53,15 @@ export interface UserListResponse {
     hasPrev: boolean;
   };
 }
+
+// User statistics interface
+export interface UserStatistics {
+  totalTransactions: number;
+  totalAmount: number;
+  avgTransactionAmount: number;
+  lastTransactionDate?: Date;
+  transactionByType: {
+    debit: number;
+    credit: number;
+  };
+}
