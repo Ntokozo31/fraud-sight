@@ -1,36 +1,21 @@
-import { Router } from "express";
+import { Router } from 'express';
+import * as transactionController from '../controllers/transactionController';
+import { authMiddleware } from '../middlewares/auth';
+import { requireAdmin } from '../middlewares/rbac';
 
-// Import controller function
-import {
-  getAllTransactions,
-  createTransaction,
-  getTransactionById,
-  updateTransaction,
-  deleteTransaction } from "../controllers/transactionController";
-
-// Import validation middleware
-import { 
-  validateTransaction,
-  checkTransactionExists
- } from "../middlewares/validateTransaction";
-
-// Router instance
 const router = Router();
 
-// Route for transactions
-router.get('/', getAllTransactions);
+// All routes require authentication
+router.use(authMiddleware);
 
-// Router to create transaction
-router.post('/', validateTransaction, createTransaction);
+// User routes authenticated users can access their own transactions
+router.post('/', transactionController.createTransaction);
+router.get('/my-transactions', transactionController.getUserTransactions);
+router.get('/:id', transactionController.getTransactionById);
+router.put('/:id', transactionController.updateTransaction);
+router.delete('/:id', transactionController.deleteTransaction);
 
-// Router to get transaction by it Id
-router.get('/:id', getTransactionById);
+// Admin routes require admin role
+router.get('/admin/all', requireAdmin, transactionController.getAllTransactions);
 
-// Router to update transaction by it id
-router.put('/:id', checkTransactionExists, validateTransaction, updateTransaction);
-
-// Router to ddelete transaction by it id
-router.delete('/:id', deleteTransaction)
-
-// Export router
 export default router;
