@@ -7,7 +7,7 @@ export interface UserProfileResponse {
   createdAt: Date;
   updatedAt: Date;
   isActive: boolean;
-  lastLoginAt?: Date;
+  lastLoginAt?: Date | null;
   totalTransactions?: number;
   totalAmount?: number;
 }
@@ -47,7 +47,7 @@ export interface UserListResponse {
   users: UserProfileResponse[];
   pagination: {
     currentPage: number;
-    totalPage: number;
+    totalPages: number;
     totalUsers: number;
     hasNext: boolean;
     hasPrev: boolean;
@@ -60,7 +60,7 @@ export interface UserStatistics {
   totalAmount: number;
   avgTransactionAmount: number;
   lastTransactionDate?: Date;
-  transactionByType: {
+  transactionsByType: {
     debit: number;
     credit: number;
   };
