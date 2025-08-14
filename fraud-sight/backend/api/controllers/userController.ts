@@ -1,10 +1,14 @@
 import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
-import dotenv from 'dotenv';
 import * as userServices from '../services/userServices';
 import { log } from '../utils/logger';
+import { 
+  UpdateUserProfileRequest,
+  ChangePasswordRequest,
+  AdminUpdateUserRequest,
+  UserListQuery
+} from '../types/user';
 
-dotenv.config();
 
 // Create new user controller function
 export const createUser = async (req: Request, res: Response) => {
@@ -80,6 +84,9 @@ export const userLogin = async (req: Request, res: Response) => {
     // Authenticate user
     const user = await userServices.loginUser({ email, password });
     
+    // Update last login time
+    await userServices.updateLastLogin(user.id);
+    
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       throw new Error('JWT_SECRET is not defined in environment variables');
@@ -121,5 +128,343 @@ export const userLogin = async (req: Request, res: Response) => {
       message: 'Failed to login',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+};
+
+
+// Get current user profile
+export const getUserProfile = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const userId = req.user.id;
+    const userProfile = await userServices.getUserProfile(userId);
+
+    if (!userProfile) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    log(`User ${userId} retrieved their profile`);
+    res.status(200).json(userProfile);
+
+  } catch (error: any) {
+    log(`Error retrieving user profile: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to retrieve profile' 
+    });
+  }
+};
+
+// Update current user profile
+export const updateUserProfile = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const userId = req.user.id;
+    const { name, email }: UpdateUserProfileRequest = req.body;
+
+    // Input validation
+    if (!name && !email) {
+      return res.status(400).json({ 
+        message: 'At least one field (name or email) is required' 
+      });
+    }
+
+    // Email format validation if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ 
+          message: 'Invalid email format' 
+        });
+      }
+    }
+
+    // Name validation if provided
+    if (name && (name.trim().length < 2 || name.trim().length > 50)) {
+      return res.status(400).json({ 
+        message: 'Name must be between 2 and 50 characters' 
+      });
+    }
+
+    const updatedProfile = await userServices.updateUserProfile(userId, { name, email });
+
+    if (!updatedProfile) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    log(`User ${userId} updated their profile`);
+    res.status(200).json(updatedProfile);
+
+  } catch (error: any) {
+    log(`Error updating user profile: ${error.message}`);
+    
+    if (error.message.includes('Email already exists')) {
+      return res.status(409).json({ 
+        message: 'Email already exists' 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Failed to update profile' 
+    });
+  }
+};
+
+// Change user password
+export const changeUserPassword = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const userId = req.user.id;
+    const { currentPassword, newPassword, confirmPassword }: ChangePasswordRequest = req.body;
+
+    // Input validation
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      return res.status(400).json({ 
+        message: 'Current password, new password, and confirmation are required' 
+      });
+    }
+
+    // Password confirmation check
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({ 
+        message: 'New password and confirmation do not match' 
+      });
+    }
+
+    // Password strength validation
+    if (newPassword.length < 6) {
+      return res.status(400).json({ 
+        message: 'New password must be at least 6 characters long' 
+      });
+    }
+
+    // Password cannot be the same as current
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ 
+        message: 'New password must be different from current password' 
+      });
+    }
+
+    const success = await userServices.changeUserPassword(userId, currentPassword, newPassword);
+
+    if (success) {
+      log(`User ${userId} changed their password`);
+      res.status(200).json({ 
+        message: 'Password changed successfully' 
+      });
+    }
+
+  } catch (error: any) {
+    log(`Error changing password for user ${req.user?.id}: ${error.message}`);
+    
+    if (error.message.includes('Current password is incorrect')) {
+      return res.status(400).json({ 
+        message: 'Current password is incorrect' 
+      });
+    }
+    
+    if (error.message.includes('User not found')) {
+      return res.status(404).json({ 
+        message: 'User not found' 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Failed to change password' 
+    });
+  }
+};
+
+// Get user statistics 
+export const getUserStatistics = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const userId = req.user.id;
+    const statistics = await userServices.getUserStatistics(userId);
+
+    if (!statistics) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    log(`User ${userId} retrieved their statistics`);
+    res.status(200).json(statistics);
+
+  } catch (error: any) {
+    log(`Error retrieving user statistics: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to retrieve statistics' 
+    });
+  }
+};
+
+
+
+// Get all users: admin 
+export const getAllUsers = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Parse query parameters
+    const query: UserListQuery = {
+      page: parseInt(req.query.page as string) || 1,
+      limit: Math.min(parseInt(req.query.limit as string) || 10, 100),
+      role: req.query.role as string,
+      isActive: req.query.isActive ? req.query.isActive === 'true' : undefined,
+      search: req.query.search as string
+    };
+
+    const result = await userServices.getAllUsers(query);
+
+    log(`Admin ${req.user.id} retrieved users list (page ${query.page})`);
+    res.status(200).json(result);
+
+  } catch (error: any) {
+    log(`Error retrieving users list: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to retrieve users' 
+    });
+  }
+};
+
+// Get any user profile: admin only
+export const getAnyUserProfile = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const targetUserId = parseInt(req.params.userId);
+    
+    if (isNaN(targetUserId)) {
+      return res.status(400).json({ 
+        message: 'Invalid user ID' 
+      });
+    }
+
+    const userProfile = await userServices.getUserProfile(targetUserId);
+
+    if (!userProfile) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    log(`Admin ${req.user.id} accessed profile of user ${targetUserId}`);
+    res.status(200).json(userProfile);
+
+  } catch (error: any) {
+    log(`Error retrieving user profile: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to retrieve user profile' 
+    });
+  }
+};
+
+// Update any user: admin only
+export const adminUpdateUser = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const targetUserId = parseInt(req.params.userId);
+    
+    if (isNaN(targetUserId)) {
+      return res.status(400).json({ 
+        message: 'Invalid user ID' 
+      });
+    }
+
+    const { name, email, role, isActive }: AdminUpdateUserRequest = req.body;
+
+    // Input validation
+    if (!name && !email && !role && isActive === undefined) {
+      return res.status(400).json({ 
+        message: 'At least one field must be provided' 
+      });
+    }
+
+    // Email format validation if provided
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ 
+          message: 'Invalid email format' 
+        });
+      }
+    }
+
+    // Role validation if provided
+    if (role && !['admin', 'customer'].includes(role)) {
+      return res.status(400).json({ 
+        message: 'Role must be either "admin" or "customer"' 
+      });
+    }
+
+    const updatedUser = await userServices.adminUpdateUser(targetUserId, { 
+      name, 
+      email, 
+      role, 
+      isActive 
+    });
+
+    if (!updatedUser) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    log(`Admin ${req.user.id} updated user ${targetUserId}`);
+    res.status(200).json(updatedUser);
+
+  } catch (error: any) {
+    log(`Error updating user: ${error.message}`);
+    
+    if (error.message.includes('Email already exists')) {
+      return res.status(409).json({ 
+        message: 'Email already exists' 
+      });
+    }
+    
+    res.status(500).json({ 
+      message: 'Failed to update user' 
+    });
+  }
+};
+
+// Get any user statistics: Admin
+export const getAnyUserStatistics = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    const targetUserId = parseInt(req.params.userId);
+
+    if (isNaN(targetUserId)) {
+      return res.status(400).json({ message: 'Invalid user ID' });
+    }
+
+    const statistics = await userServices.getUserStatistics(targetUserId)
+
+    if (!statistics) {
+      return res.status(400).json({ message: 'User not found' })
+    }
+
+    log(`Admin ${req.user.id} (${req.user.email}) accessed statistics for user ${targetUserId}`);
+    res.status(200).json(statistics)
+
+  } catch (error: any) {
+    log(`Error retrieving user statistics for admin ${req.user?.id}: ${error.message}`);
+    res.status(500).json({ message: 'Failed to retrieve user statistics'});
   }
 };
