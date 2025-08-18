@@ -76,7 +76,8 @@ export const updateProfileSchema = z.object({
 .refine(
   (data) => data.name || data.email,
   {
-    message: 'At least one field (name or email) must be provided', path: ['name']
+    message: 'At least one field (name or email) must be provided',
+    path: ['name']
   }
 );
 
@@ -123,9 +124,9 @@ export const adminUpdateUserSchema = z.object({
 export const userIdParamSchema = z.object({
   userId: z
     .string()
-    .regex(/^\d+$/, 'User ID must be positive integer')
+    .regex(/^\d+$/, 'User ID must be a positive integer')
     .transform((val) => parseInt(val))
-    .refine((val) => val > 0 && val < 2147483647, 'User ID must be a valid positive interger')
+    .refine((val) => val > 0 && val < 2147483647, 'User ID must be a valid positive integer')
 });
 
 // Query parameters
@@ -135,7 +136,7 @@ export const userListQuerySchema = z.object({
     .optional()
     .default('1')
     .transform((val) => parseInt(val))
-    .refine((val) => val > 0 && val <= 1000, 'Page must be between 0 and 1000'),
+    .refine((val) => val > 0 && val <= 1000, 'Page must be between 1 and 1000'),
 
   // Limit parameter
   limit: z
@@ -143,7 +144,7 @@ export const userListQuerySchema = z.object({
     .optional()
     .default('10')
     .transform((val) => Math.min(parseInt(val), 100))
-    .refine((val) => val > 0 && val <= 100, 'Limit must be betweet 1 and 100'),
+    .refine((val) => val > 0 && val <= 100, 'Limit must be between 1 and 100'),
 
   role: z.enum(['admin', 'customer']).optional(),
 
@@ -152,8 +153,8 @@ export const userListQuerySchema = z.object({
     .string()
     .optional()
     .transform((val) => {
-      if (val == 'true') return true;
-      if (val == 'false') return false;
+      if (val === 'true') return true;
+      if (val === 'false') return false;
       return undefined;
     }),
 
@@ -161,7 +162,7 @@ export const userListQuerySchema = z.object({
   search: z
     .string()
     .max(100, 'Search term must not exceed 100 characters')
-    .regex(/^[a-zA-Z0-9\s@.-]*$/, 'Search term contains invalid charecters')
+    .regex(/^[a-zA-Z0-9\s@.-]*$/, 'Search term contains invalid character')
     .optional()
     .transform((val) => val?.trim())
 })
