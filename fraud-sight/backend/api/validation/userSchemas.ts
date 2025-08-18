@@ -165,4 +165,13 @@ export const userListQuerySchema = z.object({
     .optional()
     .transform((val) => val?.trim())
 })
-   
+
+
+// Type generation
+export type UserRegistration = z.infer<typeof userRegistrationSchema>;
+export type UserLogin = z.infer<typeof userLoginSchema>;
+export type UpdateProfile = z.infer<typeof updateProfileSchema>;
+export type ChangePassword = z.infer<typeof changePasswordSchema>;
+export type AdminUpdateUser = z.infer<typeof adminUpdateUserSchema>;
+export type UserIdParam = z.infer<typeof userIdParamSchema>;
+export type UserListQuery = z.infer<typeof userListQuerySchema>;
