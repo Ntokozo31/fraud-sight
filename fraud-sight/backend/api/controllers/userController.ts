@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import * as userServices from '../services/userServices';
 import { log } from '../utils/logger';
+import { redis } from '../../redis/redisClient';
 import { 
   UpdateUserProfileRequest,
   ChangePasswordRequest,
@@ -466,5 +467,42 @@ export const getAnyUserStatistics = async (req: Request, res: Response) => {
   } catch (error: any) {
     log(`Error retrieving user statistics for admin ${req.user?.id}: ${error.message}`);
     res.status(500).json({ message: 'Failed to retrieve user statistics'});
+  }
+};
+
+// Logout 
+export const logout = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Extract token from Authorization header
+    const authHeader = req.headers.authorization;
+    if (!authHeader) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ message: 'Invalid token format' });
+    }
+    
+    
+    await redis.setEx(`blacklist:${token}`, 3600, 'true');
+    
+    log(`User ${req.user.email} logged out successfully`);
+    
+    res.status(200).json({ 
+      message: 'Logout successful',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    log(`Logout error for user ${req.user?.id}: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Logout failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
