@@ -162,7 +162,7 @@ export const userListQuerySchema = z.object({
   search: z
     .string()
     .max(100, 'Search term must not exceed 100 characters')
-    .regex(/^[a-zA-Z0-9\s@.-]*$/, 'Search term contains invalid character')
+    .regex(/^[a-zA-Z0-9\s@.-]*$/, 'Search term contains invalid characters')
     .optional()
     .transform((val) => val?.trim())
 })
