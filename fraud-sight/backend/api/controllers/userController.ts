@@ -10,7 +10,7 @@ import {
   UserListQuery
 } from '../types/user';
 
-
+import crypto from 'crypto';
 // Create new user controller function
 export const createUser = async (req: Request, res: Response) => {
   try {
@@ -503,6 +503,109 @@ export const logout = async (req: Request, res: Response) => {
     res.status(500).json({ 
       message: 'Logout failed',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Request password reset
+export const requestPasswordReset = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' })
+    }
+
+    const user = await userServices.getUserByEmail(email)
+
+    if (!user) {
+      log(`Password reset requested for non-existent email: ${email}`)
+      return res.status(400).json({ message: 'If that email exist, we send reset instructions' })
+    }
+
+    // Generate reset password token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+
+    // Reset token expires time
+    const resetTokenExpires = new Date(Date.now() + 15 * 60 * 1000)
+    
+    await userServices.savePasswordResetToken(user.id, resetToken, resetTokenExpires)
+
+    // Email simulation
+    console.log(`
+    PASSWORD RESET EMAIL (Simulated)
+    To: ${email}
+    subject: Reset Your FraudSight Password
+    
+    Click this link to reset your password:
+    http://fraudsight.com/reset-password?token=${resetToken}
+    
+    This link expires in 15 minutes.`);
+
+    log(`Password reset token generated for user: ${email}`)
+
+    res.status(200).json({
+      message: 'If that email exists, we have sent instructions',
+      ...(process.env.NODE_ENV === 'development' && { resetToken })
+    });
+  } catch (error: any) {
+    log(`Password reset request error: ${error.message}`);
+    res.status(500).json({
+      message: 'Failed to process reset request',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// Reset password using token
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { token, newPassword, confirmPassword } = req.body;
+
+    // Validate body fields
+    if (!token || !newPassword || !confirmPassword) {
+      return res.status(400).json({
+        message: 'Token, new password, and confirmation are required'
+      });
+    }
+
+    // Validate password confirmation
+    if (newPassword !== confirmPassword) {
+      return res.status(400).json({
+        message: 'Password confirmation does not match'
+      });
+    }
+
+    // validate password strength
+    if (newPassword.length < 6) {
+      return res.status(400).json({
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Find user by valid, non-expired reset token
+    const user = await userServices.getUserByResetToken(token);
+
+    if (!user) {
+      return res.status(400).json({
+        message: 'Invalid or expired reset token'
+      });
+    }
+
+    // Update password and clear reset token
+    await userServices.resetUserPassword(user.id, newPassword);
+
+    log(`Password reset completed for user: ${user.email}`);
+    res.status(200).json({
+      message: 'Password reset successful. You can now log in with your new password',
+      timestamp: new Date().toISOString()
+    });
+
+  } catch (error: any) {
+    log(`Password reset error: ${error.message}`);
+    res.status(500).json({
+      message: 'Failed to reset password',
+      error: process.env.NODE_ENV === 'development' ? error.message: undefined
     });
   }
 };
