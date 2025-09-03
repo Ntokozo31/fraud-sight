@@ -343,3 +343,90 @@ export const getUserStatistics = async (userId: number): Promise<UserStatistics 
     transactionsByType
   };
 };
+
+// Get user by email for password reset
+export const getUserByEmail = async (email: string) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: {
+        email: email.toLowerCase()
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        isActive: true
+      }
+    });
+    return user;
+  } catch (error) {
+    console.error('Error finding user by email:', error);
+    throw new Error('Database error while finding user');
+  }
+};
+
+// Save password reset token
+export const savePasswordResetToken = async (userId: number, resetToken: string, expiresAt: Date) => {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        resetToken: resetToken,
+        resetTokenExpires: expiresAt
+      }
+    })
+    return true;
+  } catch (error) {
+    console.error('Error saving  reset token:', error);
+    throw new Error('Failed to save reset token');
+  }
+};
+
+// Get user by valid reset token
+export const getUserByResetToken = async (resetToken: string) => {
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        resetToken: resetToken,
+        resetTokenExpires: {
+          gt: new Date()
+        },
+        isActive: true
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        resetToken: true,
+        resetTokenExpires: true
+      }
+    })
+    return user;
+  } catch (error) {
+    console.error('Error finding user by reset token:', error);
+    throw new Error('Database error while validating reset token');
+  }
+};
+
+// Reset user password and clear token
+export const resetUserPassword = async (userId: number, newPassword: string) => {
+  try {
+    const saltRounds = 10;
+    const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        password: hashedPassword,
+        resetToken: null,
+        resetTokenExpires: null,
+        updatedAt: new Date()
+      }
+    });
+    return true;
+  } catch (error) {
+    console.error('Error resetting password:', error);
+    throw new Error('Failed to reset password');
+  }
+};
+
+
