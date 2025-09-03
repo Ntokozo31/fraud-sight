@@ -31,6 +31,12 @@ router.get('/statistics', authMiddleware, userController.getUserStatistics);
 // Router logout
 router.post('/logout', authMiddleware, userController.logout);
 
+// Router forgot password
+router.post('/forgot-password', userController.requestPasswordReset);
+
+// Router reset password
+router.post('/reset-password', userController.resetPassword);
+
 // Router get users: Admin
 router.get('/admin/users', authMiddleware, requireAdmin, validateQuery(userListQuerySchema), userController.getAllUsers);
 
