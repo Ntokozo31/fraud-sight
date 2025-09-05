@@ -430,3 +430,66 @@ export const resetUserPassword = async (userId: number, newPassword: string) => 
 };
 
 
+// Get user by email verification token
+export const getUserByVerificationToken = async (verificationToken: string) => {
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        emailVerificationToken: verificationToken,
+        isActive: true
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        emailVerified: true,
+        emailVerificationToken: true
+      }
+    });
+    
+    return user;
+  } catch (error) {
+    console.error('Error finding user by verification token:', error);
+    throw new Error('Database error while validating verification token');
+  }
+};
+
+// Mark email as verified and clear verification token
+export const markEmailAsVerified = async (userId: number) => {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerified: true,
+        emailVerificationToken: null,
+        updatedAt: new Date()
+      }
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error marking email as verified:', error);
+    throw new Error('Failed to verify email');
+  }
+};
+
+// Save email verification token
+export const saveEmailVerificationToken = async (
+  userId: number, 
+  verificationToken: string
+) => {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerificationToken: verificationToken,
+        updatedAt: new Date()
+      }
+    });
+    
+    return true;
+  } catch (error) {
+    console.error('Error saving verification token:', error);
+    throw new Error('Failed to save verification token');
+  }
+};
