@@ -10,6 +10,7 @@ export interface UserProfileResponse {
   lastLoginAt?: Date | null;
   totalTransactions?: number;
   totalAmount?: number;
+  emailVerified?: boolean;
 }
 
 // Update user profile request interface
