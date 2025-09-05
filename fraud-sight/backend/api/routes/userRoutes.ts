@@ -37,6 +37,10 @@ router.post('/forgot-password', userController.requestPasswordReset);
 // Router reset password
 router.post('/reset-password', userController.resetPassword);
 
+// Routes email verification
+router.get('/verify-email/:token', userController.verifyEmail);
+router.post('/resend-verification', authMiddleware, userController.resendVerification);
+
 // Router get users: Admin
 router.get('/admin/users', authMiddleware, requireAdmin, validateQuery(userListQuerySchema), userController.getAllUsers);
 
