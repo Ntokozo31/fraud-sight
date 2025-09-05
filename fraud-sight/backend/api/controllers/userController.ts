@@ -609,3 +609,101 @@ export const resetPassword = async (req: Request, res: Response) => {
     });
   }
 };
+
+// Verify email
+export const verifyEmail = async (req: Request, res: Response) => {
+  try {
+    const token = req.params.token;
+
+    if (!token) {
+      return res.status(400).json({ message: 'Verification token is required' });
+    }
+
+    const user = await userServices.getUserByVerificationToken(token)
+    
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired verification token' })
+    }
+
+    if (user.emailVerified) {
+      return res.status(200).json({
+        message: 'Email already verified',
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          emailVerified: true
+        }
+      })
+    }
+    await userServices.markEmailAsVerified(user.id);
+    log(`Email verified for user: ${user.email}`);
+    return res.status(200).json({
+      message: 'Email verification successful. Your account is now fully active',
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        emailVerified: true
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error:any) {
+    log(`Email verification error: ${error.message}`)
+    return res.status(500).json({ 
+      message: 'Failed to verify email',
+      error: process.env.NODE_ENV === 'development' ? error.message: undefined
+    })
+  }
+};
+
+// Resend email verification token
+export const resendVerification = async (req: Request, res: Response) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+
+    // Check if email is already verified
+    if (req.user.emailVerified) {
+      return res.status(400).json({ 
+        message: 'Email is already verified' 
+      });
+    }
+
+    // Generate new verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+
+    // Save verification token to database
+    await userServices.saveEmailVerificationToken(req.user.id, verificationToken);
+
+    // Simulate sending verification email
+    console.log(`
+    📧 EMAIL VERIFICATION (Simulated)
+    To: ${req.user.email}
+    Subject: Verify Your fraudSight Account
+    
+    Click this link to verify your email:
+    http://fraudsight.com/verify-email/${verificationToken}
+    
+    This verification link does not expire.
+    
+    If you didn't create this account, please ignore this email.
+    `);
+
+    log(`Verification email resent to user: ${req.user.email}`);
+    
+    res.status(200).json({ 
+      message: 'Verification email sent. Please check your inbox.',
+      
+      ...(process.env.NODE_ENV === 'development' && { verificationToken })
+    });
+
+  } catch (error: any) {
+    log(`Resend verification error for user ${req.user?.id}: ${error.message}`);
+    res.status(500).json({ 
+      message: 'Failed to resend verification email',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
