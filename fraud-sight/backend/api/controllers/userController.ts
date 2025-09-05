@@ -665,7 +665,10 @@ export const resendVerification = async (req: Request, res: Response) => {
     }
 
     // Check if email is already verified
-    if (req.user.emailVerified) {
+    // Fetch latest user data to check email verification status
+    const user = await userServices.getUserProfile(req.user.id);
+
+    if (user && user.emailVerified) {
       return res.status(400).json({ 
         message: 'Email is already verified' 
       });
@@ -695,7 +698,7 @@ export const resendVerification = async (req: Request, res: Response) => {
     
     res.status(200).json({ 
       message: 'Verification email sent. Please check your inbox.',
-      
+
       ...(process.env.NODE_ENV === 'development' && { verificationToken })
     });
 
