@@ -436,6 +436,9 @@ export const getUserByVerificationToken = async (verificationToken: string) => {
     const user = await prisma.user.findFirst({
       where: {
         emailVerificationToken: verificationToken,
+        emailVerificationTokenExpires: {
+          gt: new Date()
+        },
         isActive: true
       },
       select: {
@@ -462,6 +465,7 @@ export const markEmailAsVerified = async (userId: number) => {
       data: {
         emailVerified: true,
         emailVerificationToken: null,
+        emailVerificationTokenExpires: null,
         updatedAt: new Date()
       }
     });
@@ -479,10 +483,14 @@ export const saveEmailVerificationToken = async (
   verificationToken: string
 ) => {
   try {
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + 24);
+
     await prisma.user.update({
       where: { id: userId },
       data: {
         emailVerificationToken: verificationToken,
+        emailVerificationTokenExpires: expiresAt,
         updatedAt: new Date()
       }
     });
