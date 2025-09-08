@@ -41,13 +41,29 @@ export const createUser = async (req: Request, res: Response) => {
     // Create user
     const newUserData = await userServices.newUser({ name, email, password, role });
     
+    // Verification token
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    await userServices.saveEmailVerificationToken(newUserData.id, verificationToken);
+
+    console.log(`
+    📧 VERIFICATION EMAIL (Simulated)
+    To: ${email}
+    Subject: Verify Your FraudSight Account
+    
+    Click this link to verify your email:
+    http://fraudsight.com/verify-email/${verificationToken}
+    `);
+
     log(`New user created: ${email} with role: ${role || 'customer'}`);
     res.status(201).json({
       id: newUserData.id,
       name: newUserData.name,
       email: newUserData.email,
       role: newUserData.role,
-      createdAt: newUserData.createdAt
+      createdAt: newUserData.createdAt,
+      message: 'Account created! Please check your email to verify your account.',
+
+      ...(process.env.NODE_ENV === 'development' && { verificationToken })
     });
 
   } catch (error: any) {
