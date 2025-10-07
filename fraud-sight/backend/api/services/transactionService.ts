@@ -292,8 +292,14 @@ export const calculateTransactionAnalytics = async (where: any) => {
           },
           {
             AND: [
-              { type: 'withdrawal' },
+              { type: 'debit' },
               { amount: { gte: 1000 } }
+            ]
+          },
+          {
+            AND: [
+              { type: 'credit'},
+              { amount: { gte: 15000} }
             ]
           }
         ]
